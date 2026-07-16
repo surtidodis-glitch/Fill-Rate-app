@@ -36,6 +36,7 @@ export interface ParsedRow {
   subcategoria: string;
   surtido: number;
   entrega: number;
+  diferencia: number;
   fillRate: number;
   clasificacion: string;
 }
@@ -49,12 +50,6 @@ export interface ParseResult {
 const HOJA_OBJETIVO = "BASE_MAESTRA";
 const HOJA_IGNORADA = "SV";
 
-/**
- * Excel permite "combinar celdas" (ej. la columna SEMANA se ve con el mismo
- * valor a lo largo de varias filas, pero solo la primera fila del grupo
- * realmente tiene el dato guardado). Esta función copia ese valor a todas
- * las filas que pertenecen al mismo rango combinado, antes de leer la hoja.
- */
 function rellenarCeldasCombinadas(sheet: XLSX.WorkSheet): void {
   const merges = sheet["!merges"];
   if (!merges) return;
@@ -84,20 +79,15 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
       `No se encontró la hoja "${HOJA_OBJETIVO}" en el archivo. Hojas disponibles: ${workbook.SheetNames.join(", ")}`
     );
   }
-  if (workbook.SheetNames.includes(HOJA_IGNORADA)) {
-    // La hoja SV existe pero se ignora deliberadamente — no es un error
-  }
 
   const sheet = workbook.Sheets[HOJA_OBJETIVO];
   rellenarCeldasCombinadas(sheet);
-  // defval:null asegura que celdas vacías no rompan el mapeo de columnas
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
 
   if (raw.length === 0) {
     throw new Error(`La hoja "${HOJA_OBJETIVO}" no contiene filas de datos.`);
   }
 
-  // Construye un mapa de encabezado normalizado -> encabezado real de la fila
   const sampleKeys = Object.keys(raw[0]);
   const headerMap = new Map(sampleKeys.map((k) => [normalizeHeader(k), k]));
 
@@ -107,8 +97,6 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
   }
 
   const rows: ParsedRow[] = [];
-  // Recuerda el último valor visto de cada columna de texto, para el caso
-  // en que el Excel deje celdas en blanco en vez de usar combinación real.
   let ultimaSemana = "";
   let ultimoPais = "";
   let ultimaTienda = "";
@@ -118,7 +106,7 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
 
   raw.forEach((record, i) => {
     const get = (col: string) => record[headerMap.get(col)!];
-    const rowNum = i + 2; // +2 porque la fila 1 es encabezado y XLSX es 0-index
+    const rowNum = i + 2;
 
     const semanaCelda = get("SEMANA");
     const surtidoCelda = get("SURTIDO");
@@ -145,8 +133,6 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
       return;
     }
 
-    // Si surtido/entrega vienen vacíos pero el resto de la fila sí tiene datos,
-    // se completan con 0 en vez de descartar la fila entera.
     const surtidoNum = surtidoCelda == null || String(surtidoCelda).trim() === "" ? 0 : Number(surtidoCelda);
     const entregaNum = entregaCelda == null || String(entregaCelda).trim() === "" ? 0 : Number(entregaCelda);
 
@@ -155,16 +141,8 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
       return;
     }
 
-    let fillRateRaw = get("FILL RATE");
-    let fillRate: number;
-    if (fillRateRaw == null) {
-      fillRate = surtidoNum > 0 ? Number(((entregaNum / surtidoNum) * 100).toFixed(2)) : 0;
-    } else if (typeof fillRateRaw === "number" && fillRateRaw <= 1.5) {
-      // Excel a veces guarda el % como fracción (0.98 en vez de 98)
-      fillRate = Number((fillRateRaw * 100).toFixed(2));
-    } else {
-      fillRate = Number(String(fillRateRaw).replace("%", "").trim());
-    }
+    const fillRate = surtidoNum > 0 ? Number(((entregaNum / surtidoNum) * 100).toFixed(2)) : 0;
+    const diferencia = entregaNum - surtidoNum;
 
     const pais = String(get("PAIS") ?? "").trim() || ultimoPais;
     const tienda = String(get("TIENDA") ?? "").trim() || ultimaTienda;
@@ -188,6 +166,7 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
       subcategoria,
       surtido: surtidoNum,
       entrega: entregaNum,
+      diferencia,
       fillRate,
       clasificacion: String(get("CLASIFICACION") ?? "").trim(),
     });
@@ -195,8 +174,6 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
 
   return { rows, errors, totalRowsInSheet: raw.length };
 }
-
-// --- Reporte DATO_MEZCLA (separado de BASE_MAESTRA) ---
 
 const HOJA_MEZCLA = "DATO_MEZCLA";
 const REQUIRED_COLUMNS_MEZCLA = ["SEMANA", "TIENDA", "CATEGORIA", "TIPO", "SURTIDO", "ENTREGA", "FILL RATE", "CLASIFICACION"] as const;
@@ -208,6 +185,7 @@ export interface ParsedMezclaRow {
   tipo: string;
   surtido: number;
   entrega: number;
+  diferencia: number;
   fillRate: number;
   clasificacion: string;
 }
@@ -219,12 +197,6 @@ export interface ParseMezclaResult {
   hojaEncontrada: boolean;
 }
 
-/**
- * Lee la hoja DATO_MEZCLA, si existe. A diferencia de BASE_MAESTRA, es un
- * reporte independiente — no se cruza ni se mezcla con esos datos.
- * Si la hoja no existe en el archivo, no es un error: simplemente no hay
- * nada que cargar para este reporte.
- */
 export function parseMezclaWorkbook(buffer: Buffer): ParseMezclaResult {
   const errors: string[] = [];
   const workbook = XLSX.read(buffer, { type: "buffer" });
@@ -289,15 +261,8 @@ export function parseMezclaWorkbook(buffer: Buffer): ParseMezclaResult {
       return;
     }
 
-    let fillRateRaw = get("FILL RATE");
-    let fillRate: number;
-    if (fillRateRaw == null) {
-      fillRate = surtidoNum > 0 ? Number(((entregaNum / surtidoNum) * 100).toFixed(2)) : 0;
-    } else if (typeof fillRateRaw === "number" && fillRateRaw <= 1.5) {
-      fillRate = Number((fillRateRaw * 100).toFixed(2));
-    } else {
-      fillRate = Number(String(fillRateRaw).replace("%", "").trim());
-    }
+    const fillRate = surtidoNum > 0 ? Number(((entregaNum / surtidoNum) * 100).toFixed(2)) : 0;
+    const diferencia = entregaNum - surtidoNum;
 
     ultimaSemana = semana;
     ultimaTienda = tienda;
@@ -311,6 +276,7 @@ export function parseMezclaWorkbook(buffer: Buffer): ParseMezclaResult {
       tipo,
       surtido: surtidoNum,
       entrega: entregaNum,
+      diferencia,
       fillRate,
       clasificacion: String(get("CLASIFICACION") ?? "").trim(),
     });

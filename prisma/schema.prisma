@@ -12,7 +12,7 @@ generator client {
 
 model FillRateRecord {
   id             Int      @id @default(autoincrement())
-  semana         String // ej. "W27"
+  semana         String
   pais           String
   tienda         String
   departamento   String
@@ -20,9 +20,9 @@ model FillRateRecord {
   subcategoria   String
   surtido        Int
   entrega        Int
+  diferencia     Int
   fillRate       Float    @map("fill_rate")
   clasificacion  String
-  // Trazabilidad de la carga
   loadId         Int
   load           DataLoad @relation("FillRateLoads", fields: [loadId], references: [id])
   createdAt      DateTime @default(now()) @map("created_at")
@@ -34,16 +34,15 @@ model FillRateRecord {
   @@map("fillrate_records")
 }
 
-// Reporte separado, proveniente de la hoja DATO_MEZCLA del mismo Excel.
-// No tiene relación con BASE_MAESTRA — es un reporte independiente.
 model MezclaRecord {
   id             Int      @id @default(autoincrement())
   semana         String
   tienda         String
   categoria      String
-  tipo           String // ej. "CREDENCIAL"
+  tipo           String
   surtido        Int
   entrega        Int
+  diferencia     Int
   fillRate       Float    @map("fill_rate")
   clasificacion  String
   loadId         Int
@@ -56,12 +55,11 @@ model MezclaRecord {
   @@map("mezcla_records")
 }
 
-// Registro de cada archivo Excel cargado — permite auditar y revertir cargas
 model DataLoad {
   id             Int              @id @default(autoincrement())
   fileName       String           @map("file_name")
   rowCount       Int              @map("row_count")
-  status         String           @default("procesando") // procesando | completado | error
+  status         String           @default("procesando")
   errorLog       String?          @map("error_log")
   uploadedAt     DateTime         @default(now()) @map("uploaded_at")
   fillRateRecords FillRateRecord[] @relation("FillRateLoads")
