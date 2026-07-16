@@ -1,0 +1,71 @@
+// Esquema de base de datos — Fill Rate App
+// Cada fila representa un registro de la hoja BASE_MAESTRA
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model FillRateRecord {
+  id             Int      @id @default(autoincrement())
+  semana         String // ej. "W27"
+  pais           String
+  tienda         String
+  departamento   String
+  categoria      String
+  subcategoria   String
+  surtido        Int
+  entrega        Int
+  fillRate       Float    @map("fill_rate")
+  clasificacion  String
+  // Trazabilidad de la carga
+  loadId         Int
+  load           DataLoad @relation("FillRateLoads", fields: [loadId], references: [id])
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([semana])
+  @@index([pais])
+  @@index([tienda])
+  @@index([departamento])
+  @@map("fillrate_records")
+}
+
+// Reporte separado, proveniente de la hoja DATO_MEZCLA del mismo Excel.
+// No tiene relación con BASE_MAESTRA — es un reporte independiente.
+model MezclaRecord {
+  id             Int      @id @default(autoincrement())
+  semana         String
+  tienda         String
+  categoria      String
+  tipo           String // ej. "CREDENCIAL"
+  surtido        Int
+  entrega        Int
+  fillRate       Float    @map("fill_rate")
+  clasificacion  String
+  loadId         Int
+  load           DataLoad @relation("MezclaLoads", fields: [loadId], references: [id])
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([semana])
+  @@index([tienda])
+  @@index([categoria])
+  @@map("mezcla_records")
+}
+
+// Registro de cada archivo Excel cargado — permite auditar y revertir cargas
+model DataLoad {
+  id             Int              @id @default(autoincrement())
+  fileName       String           @map("file_name")
+  rowCount       Int              @map("row_count")
+  status         String           @default("procesando") // procesando | completado | error
+  errorLog       String?          @map("error_log")
+  uploadedAt     DateTime         @default(now()) @map("uploaded_at")
+  fillRateRecords FillRateRecord[] @relation("FillRateLoads")
+  mezclaRecords   MezclaRecord[]  @relation("MezclaLoads")
+
+  @@map("data_loads")
+}
