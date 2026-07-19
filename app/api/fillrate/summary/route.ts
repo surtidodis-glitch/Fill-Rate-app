@@ -20,10 +20,10 @@ export async function GET(req: NextRequest) {
     if (value && value !== "Todos" && value !== "Todas") where[field] = value;
   }
 
-  const [agg, porClasificacion, tiendas] = await Promise.all([
+  const [agg, porClasificacion, tiendas, porSemana] = await Promise.all([
     prisma.fillRateRecord.aggregate({
       where,
-      _sum: { surtido: true, entrega: true },
+      _sum: { surtido: true, entrega: true, diferencia: true },
       _avg: { fillRate: true },
       _count: true,
     }),
@@ -34,11 +34,18 @@ export async function GET(req: NextRequest) {
       _count: true,
     }),
     prisma.fillRateRecord.findMany({ where, distinct: ["tienda"], select: { tienda: true } }),
+    prisma.fillRateRecord.groupBy({
+      by: ["semana"],
+      where,
+      _sum: { surtido: true, entrega: true },
+      orderBy: { semana: "asc" },
+    }),
   ]);
 
   return NextResponse.json({
     surtido: agg._sum.surtido ?? 0,
     entrega: agg._sum.entrega ?? 0,
+    diferencia: agg._sum.diferencia ?? 0,
     fillRatePromedio: Number((agg._avg.fillRate ?? 0).toFixed(2)),
     totalRegistros: agg._count,
     tiendas: tiendas.length,
@@ -47,5 +54,13 @@ export async function GET(req: NextRequest) {
       entrega: c._sum.entrega ?? 0,
       registros: c._count,
     })),
+    porSemana: porSemana.map((s) => {
+      const surtido = s._sum.surtido ?? 0;
+      const entrega = s._sum.entrega ?? 0;
+      return {
+        semana: s.semana,
+        fillRate: surtido > 0 ? Number(((entrega / surtido) * 100).toFixed(2)) : 0,
+      };
+    }),
   });
 }
