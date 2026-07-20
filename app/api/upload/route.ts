@@ -25,10 +25,12 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const anioForm = formData.get("anio");
+  const anio = anioForm ? parseInt(String(anioForm), 10) : undefined;
 
   let parsed;
   try {
-    parsed = parseFillRateWorkbook(buffer);
+    parsed = parseFillRateWorkbook(buffer, anio);
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 422 });
   }

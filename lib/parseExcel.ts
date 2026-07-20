@@ -29,6 +29,7 @@ function normalizeHeader(h: string): string {
 
 export interface ParsedRow {
   semana: string;
+  anio: number;
   pais: string;
   tienda: string;
   departamento: string;
@@ -76,7 +77,7 @@ function rellenarCeldasCombinadas(sheet: XLSX.WorkSheet): void {
   }
 }
 
-export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
+export function parseFillRateWorkbook(buffer: Buffer, anioPorDefecto: number = new Date().getFullYear()): ParseResult {
   const errors: string[] = [];
   const workbook = XLSX.read(buffer, { type: "buffer" });
 
@@ -177,6 +178,11 @@ export function parseFillRateWorkbook(buffer: Buffer): ParseResult {
 
     rows.push({
       semana,
+      anio: (() => {
+        const anioCelda = get("ANO"); // "AÑO" normalizado sin tilde
+        const n = anioCelda != null ? Number(anioCelda) : NaN;
+        return Number.isFinite(n) && n > 2000 ? n : anioPorDefecto;
+      })(),
       pais,
       tienda,
       departamento,

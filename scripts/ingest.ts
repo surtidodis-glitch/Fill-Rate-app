@@ -9,15 +9,16 @@ import { parseFillRateWorkbook, parseMezclaWorkbook } from "../lib/parseExcel";
 
 async function main() {
   const filePath = process.argv[2];
+  const anioArg = process.argv[3] ? parseInt(process.argv[3], 10) : undefined;
   if (!filePath) {
-    console.error("Uso: npm run ingest -- ./ruta/al/archivo.xlsx");
+    console.error("Uso: npm run ingest -- ./ruta/al/archivo.xlsx [año]");
     process.exit(1);
   }
 
   const buffer = fs.readFileSync(path.resolve(filePath));
 
   // --- BASE_MAESTRA ---
-  const { rows, errors, totalRowsInSheet } = parseFillRateWorkbook(buffer);
+  const { rows, errors, totalRowsInSheet } = parseFillRateWorkbook(buffer, anioArg);
 
   console.log(`BASE_MAESTRA — filas leídas: ${totalRowsInSheet}, válidas: ${rows.length}`);
   if (errors.length) {

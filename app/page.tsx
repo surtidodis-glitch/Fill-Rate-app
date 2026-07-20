@@ -16,8 +16,10 @@ import {
   Loader2,
   ArrowRightLeft,
   X,
+  Pencil,
+  Check,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LineChart, Line, CartesianGrid } from "recharts";
 
 const BLUE = "#3B82F6";
 const GREEN = "#22C55E";
@@ -165,6 +167,38 @@ export default function DashboardPage() {
   const [mezclaRows, setMezclaRows] = useState<MezclaRow[]>([]);
   const [mezclaLoading, setMezclaLoading] = useState(false);
 
+  // Título editable
+  const [titulo, setTitulo] = useState("Fill Rate Analytics");
+  const [editandoTitulo, setEditandoTitulo] = useState(false);
+  const [tituloBorrador, setTituloBorrador] = useState("");
+
+  // Vista Semanal / Mensual del gráfico de tendencia
+  const [vistaTendencia, setVistaTendencia] = useState<"semanal" | "mensual">("semanal");
+  const [porMes, setPorMes] = useState<{ mes: string; fillRate: number }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((data) => setTitulo(data.titulo))
+      .catch(() => {});
+  }, []);
+
+  async function guardarTitulo() {
+    const nuevo = tituloBorrador.trim();
+    if (!nuevo) return;
+    setTitulo(nuevo);
+    setEditandoTitulo(false);
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titulo: nuevo }),
+      });
+    } catch {
+      // Si falla el guardado remoto, el título igual queda visible localmente
+    }
+  }
+
   useEffect(() => {
     fetch("/api/fillrate/filtros")
       .then((r) => r.json())
@@ -242,6 +276,16 @@ export default function DashboardPage() {
       .finally(() => setMezclaLoading(false));
   }, [tienda, categoria]);
 
+  useEffect(() => {
+    if (vistaTendencia !== "mensual") return;
+    const p = new URLSearchParams(filterParams);
+    p.delete("semana"); // el mensual agrupa todas las semanas, no tiene sentido filtrar por una sola
+    fetch(`/api/fillrate/mensual?${p.toString()}`)
+      .then((r) => r.json())
+      .then((data) => setPorMes(data.porMes ?? []))
+      .catch(() => {});
+  }, [vistaTendencia, filterParams]);
+
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadMsg(null);
@@ -306,7 +350,37 @@ export default function DashboardPage() {
 
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-16 shrink-0 border-b border-[#1E2438] flex items-center justify-between px-6">
-          <div className="text-lg font-semibold">Fill Rate Analytics</div>
+          {editandoTitulo ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                value={tituloBorrador}
+                onChange={(e) => setTituloBorrador(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") guardarTitulo();
+                  if (e.key === "Escape") setEditandoTitulo(false);
+                }}
+                className="text-lg font-semibold bg-[#12172A] border border-[#3B82F6] rounded-lg px-2 py-1 outline-none"
+              />
+              <button onClick={guardarTitulo} className="text-[#22C55E] hover:opacity-80">
+                <Check className="h-4 w-4" />
+              </button>
+              <button onClick={() => setEditandoTitulo(false)} className="text-[#8891A5] hover:opacity-80">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="group flex items-center gap-2"
+              onClick={() => {
+                setTituloBorrador(titulo);
+                setEditandoTitulo(true);
+              }}
+            >
+              <span className="text-lg font-semibold">{titulo}</span>
+              <Pencil className="h-3.5 w-3.5 text-[#8891A5] opacity-0 group-hover:opacity-100" />
+            </button>
+          )}
           <label className="flex items-center gap-2 rounded-lg border border-[#1E2438] px-3 py-1.5 text-xs cursor-pointer hover:bg-white/5">
             {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
             {uploading ? "Cargando..." : "Cargar otro archivo"}
@@ -362,6 +436,40 @@ export default function DashboardPage() {
             <KpiCard icon={Globe2} iconColor={AMBER} label="Países" value={String(summary?.paises ?? 0)} />
           </div>
 
+          <div className="rounded-xl border border-[#1E2438] bg-[#12172A] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium">Tendencia de Fill Rate</div>
+              <div className="flex rounded-lg border border-[#1E2438] overflow-hidden text-[11px]">
+                <button
+                  onClick={() => setVistaTendencia("semanal")}
+                  className={`px-2.5 py-1 ${vistaTendencia === "semanal" ? "bg-[#3B82F6] text-white" : "text-[#8891A5]"}`}
+                >
+                  Semanal
+                </button>
+                <button
+                  onClick={() => setVistaTendencia("mensual")}
+                  className={`px-2.5 py-1 ${vistaTendencia === "mensual" ? "bg-[#3B82F6] text-white" : "text-[#8891A5]"}`}
+                >
+                  Mensual
+                </button>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={vistaTendencia === "semanal" ? summary?.porSemana ?? [] : porMes} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke="#1E2438" vertical={false} />
+                <XAxis dataKey={vistaTendencia === "semanal" ? "semana" : "mes"} tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={{ stroke: "#1E2438" }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={false} tickLine={false} unit="%" />
+                <Tooltip contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
+                <Line type="monotone" dataKey="fillRate" stroke={BLUE} strokeWidth={2} dot={{ r: 3, fill: BLUE }} />
+              </LineChart>
+            </ResponsiveContainer>
+            {vistaTendencia === "mensual" && (
+              <div className="text-[10px] text-[#8891A5] mt-2">
+                * El mes se calcula a partir del número de semana y el año de carga (no hay fecha exacta en el Excel).
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-[#1E2438] bg-[#12172A] p-4">
               <div className="text-sm font-medium mb-1">Top 10 tiendas con mayor entrega</div>
@@ -370,7 +478,7 @@ export default function DashboardPage() {
                 <BarChart data={summary?.topTiendas ?? []} layout="vertical" margin={{ left: 10 }}>
                   <XAxis type="number" tick={{ fontSize: 10, fill: "#8891A5" }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="tienda" tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={false} tickLine={false} width={50} />
-                  <Tooltip contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
+                  <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
                   <Bar dataKey="entrega" radius={[0, 4, 4, 0]} fill={BLUE} />
                 </BarChart>
               </ResponsiveContainer>
@@ -403,12 +511,12 @@ export default function DashboardPage() {
                       <Tooltip contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="text-[11px] space-y-1 flex-1 min-w-0">
+                  <div className="text-[11px] space-y-1.5 flex-1">
                     {(summary?.porCategoria ?? []).map((c, i) => (
-                      <div key={c.categoria} className="flex items-center gap-1.5 min-w-0">
+                      <div key={c.categoria} className="flex items-center gap-1.5">
                         <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                        <span className="text-[#8891A5] truncate">{c.categoria}</span>
-                        <span className="ml-auto text-[#E7E9F0] shrink-0">{c.pct}%</span>
+                        <span className="text-[#8891A5] whitespace-nowrap overflow-hidden text-ellipsis">{c.categoria}</span>
+                        <span className="ml-auto text-[#E7E9F0] shrink-0 pl-2">{c.pct}%</span>
                       </div>
                     ))}
                   </div>
@@ -418,7 +526,7 @@ export default function DashboardPage() {
                   <BarChart data={summary?.porCategoria ?? []} margin={{ left: -10 }}>
                     <XAxis dataKey="categoria" tick={{ fontSize: 9, fill: "#8891A5" }} axisLine={false} tickLine={false} interval={0} angle={-30} textAnchor="end" height={60} />
                     <YAxis tick={{ fontSize: 10, fill: "#8891A5" }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
+                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
                     <Bar dataKey="entrega" radius={[4, 4, 0, 0]}>
                       {(summary?.porCategoria ?? []).map((_, i) => (
                         <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />

@@ -13,6 +13,7 @@ generator client {
 model FillRateRecord {
   id             Int      @id @default(autoincrement())
   semana         String // ej. "W27"
+  anio           Int // año de la carga, usado para calcular el mes del reporte mensual
   pais           String
   tienda         String
   departamento   String
@@ -55,6 +56,15 @@ model MezclaRecord {
   @@index([tienda])
   @@index([categoria])
   @@map("mezcla_records")
+}
+
+// Configuración editable de la app (por ahora solo el título del reporte).
+// Siempre hay exactamente 1 fila (id fijo = 1).
+model AppConfig {
+  id     Int    @id @default(1)
+  titulo String @default("Fill Rate Analytics")
+
+  @@map("app_config")
 }
 
 // Registro de cada archivo Excel cargado — permite auditar y revertir cargas
