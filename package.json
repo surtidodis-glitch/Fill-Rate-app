@@ -7,9 +7,9 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "ingest": "tsx scripts/ingest.ts",
-    "ver-omitidas": "tsx scripts/ver-omitidas.ts",
-    "limpiar-datos": "tsx scripts/limpiar-datos.ts",
+    "ingest": "tsx --env-file=.env scripts/ingest.ts",
+    "ver-omitidas": "tsx --env-file=.env scripts/ver-omitidas.ts",
+    "limpiar-datos": "tsx --env-file=.env scripts/limpiar-datos.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
