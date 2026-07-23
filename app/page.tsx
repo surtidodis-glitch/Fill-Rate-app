@@ -458,7 +458,7 @@ export default function DashboardPage() {
               <LineChart data={vistaTendencia === "semanal" ? summary?.porSemana ?? [] : porMes} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid stroke="#1E2438" vertical={false} />
                 <XAxis dataKey={vistaTendencia === "semanal" ? "semana" : "mes"} tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={{ stroke: "#1E2438" }} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={false} tickLine={false} unit="%" />
+                <YAxis domain={[80, 120]} tick={{ fontSize: 11, fill: "#8891A5" }} axisLine={false} tickLine={false} unit="%" />
                 <Tooltip contentStyle={{ background: "#0A0E1A", border: "1px solid #1E2438", fontSize: 12, borderRadius: 8 }} />
                 <Line type="monotone" dataKey="fillRate" stroke={BLUE} strokeWidth={2} dot={{ r: 3, fill: BLUE }} />
               </LineChart>
